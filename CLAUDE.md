@@ -15,7 +15,7 @@ The first player to connect **4 discs** in a row — horizontally, vertically, o
 ```
 Fourwins/
 ├── index.html   # Entire game: HTML layout + embedded CSS + embedded JS
-├── README.md    # Brief project description
+├── README.md    # Project description and feature list
 └── CLAUDE.md    # This file
 ```
 
@@ -36,97 +36,174 @@ Open `index.html` directly in any modern browser to play.
 
 ## Architecture (`index.html`)
 
-All code lives in a single file, split into clearly commented sections:
+All code lives in a single file with five clearly delimited sections, each preceded by a banner comment of the form:
+
+```js
+// ─────────────────────────────────────────────
+//  Section Name
+// ─────────────────────────────────────────────
+```
+
+The five sections in order are: **Constants → State → DOM references → Board logic → AI — Heuristic → AI — Minimax → Rendering → Game flow → Event listeners → Start**.
+
+### HTML structure
+
+```
+<body>
+  <h1>                        — gradient title
+  <p.subtitle>                — tagline
+  <div.difficulty-row>        — Easy / Medium / Hard buttons (.diff-btn[data-level])
+  <div.board-wrapper>
+    <div#colArrows>           — 7 ▼ arrow divs (.col-arrow[data-arrow=c])
+    <div#boardGrid>           — 42 cell divs (.cell[data-r][data-c])
+  <div#statusBar>             — coloured dot + <span#statusText>
+  <div.score-row>             — <span#scoreP1> <span#scoreDraw> <span#scoreP2>
+  <button#newGameBtn>
+  <div.legend>
+```
 
 ### Constants
-```
-ROWS = 6, COLS = 7
-HUMAN = 1, CPU = 2, EMPTY = 0
+
+```js
+ROWS  = 6,  COLS = 7
+HUMAN = 1,  CPU  = 2,  EMPTY = 0
 DEPTH = { easy: 0, medium: 3, hard: 7 }
+// Note: DEPTH.easy is never used — Easy mode bypasses minimax entirely
 ```
 
 ### State variables
+
 | Variable | Type | Purpose |
 |---|---|---|
-| `board` | `number[][]` | 6×7 grid; values 0/1/2 |
+| `board` | `number[][]` | 6×7 grid; values 0 / 1 / 2 |
 | `currentTurn` | `1\|2` | Whose turn it is |
 | `gameOver` | `boolean` | Blocks input after win/draw |
-| `difficulty` | `'easy'\|'medium'\|'hard'` | Controls AI depth |
+| `difficulty` | `'easy'\|'medium'\|'hard'` | Controls AI strategy |
+| `hoveredCol` | `number` | Column index under the cursor (-1 = none); drives hover highlighting |
 | `animating` | `boolean` | Blocks clicks during drop animation or AI delay |
-| `score` | `{p1,p2,draw}` | Cumulative score across games |
+| `score` | `{p1,p2,draw}` | Cumulative score across games (never resets on New Game) |
 
 ### Key Functions
 
-| Function | Description |
-|---|---|
-| `createBoard()` | Returns a fresh 6×7 zero-filled array |
-| `getValidCols(b)` | Returns columns where row 0 is still empty |
-| `dropPiece(b, col, player)` | Mutates `b`, returns the row where piece landed |
-| `undropPiece(b, col)` | Reverses `dropPiece` (used by minimax) |
-| `checkWinner(b)` | Returns `{player, cells}` or `null` |
-| `isBoardFull(b)` | Returns `true` when no moves remain |
-| `evaluateBoard(b, player)` | Heuristic score for minimax leaf nodes |
-| `scoreWindow(window, player)` | Scores a 4-cell window for one player |
-| `minimax(b, depth, α, β, max)` | Recursive minimax with alpha-beta pruning |
-| `getBestMove(b, depth)` | Runs minimax for all valid columns, returns best |
-| `chooseComputerCol()` | Dispatches to random (easy) or minimax (medium/hard) |
-| `initBoard()` | Resets state, rebuilds DOM on first call only |
-| `handleClick(col)` | Entry point for human moves |
-| `playMove(col, player)` | Drops piece + triggers CSS drop animation |
-| `afterMove(player)` | Checks win/draw, switches turn, triggers CPU |
-| `renderBoard(winCells?)` | Syncs DOM classes with board state |
-| `setStatus(text, dotClass)` | Updates the status bar below the grid |
+#### Board logic
 
-### AI Design
-
-| Difficulty | Strategy | Lookahead |
+| Function | Signature | Description |
 |---|---|---|
-| Easy | Pure random from valid columns | — |
-| Medium | Minimax + alpha-beta | depth 3 |
-| Hard | Minimax + alpha-beta | depth 7 |
+| `createBoard()` | `→ number[][]` | Returns a fresh 6×7 zero-filled array |
+| `getValidCols(b)` | `→ number[]` | Returns columns where `b[0][c] === EMPTY` |
+| `dropPiece(b, col, player)` | `→ number` | Mutates `b`; returns row where piece landed, -1 if full |
+| `undropPiece(b, col)` | `→ void` | Clears the topmost filled cell in `col` (used by minimax backtracking) |
+| `checkWinner(b)` | `→ {player, cells}\|null` | Scans all 4 directions; returns winning player and the 4 winning `[r,c]` pairs |
+| `isBoardFull(b)` | `→ boolean` | `true` when every cell in row 0 is filled |
 
-**Heuristic** (`evaluateBoard`):
-- +6 per CPU piece in the center column
-- Scores every 4-cell window (horizontal, vertical, both diagonals)
-- Per window: +100 000 for 4-in-a-row, +10 for 3+empty, +3 for 2+2 empty, -80 for opponent 3+empty
+#### AI — Heuristic
 
-**Alpha-beta**: standard negamax-style; columns ordered center-out for better pruning.
+| Function | Signature | Description |
+|---|---|---|
+| `scoreWindow(window, player)` | `→ number` | Scores a 4-element array for `player` (see weights below) |
+| `evaluateBoard(b, player)` | `→ number` | Aggregates `scoreWindow` over all horizontal, vertical, and diagonal windows; adds center-column bonus |
+
+**`scoreWindow` weights:**
+
+| Pattern | Score |
+|---|---|
+| 4 of player | +100 000 |
+| 3 of player + 1 empty | +10 |
+| 2 of player + 2 empty | +3 |
+| 3 of opponent + 1 empty | −80 |
+| anything else | 0 |
+
+**`evaluateBoard` center-column bonus:** +6 per CPU piece in column 3.
+
+#### AI — Minimax
+
+| Function | Signature | Description |
+|---|---|---|
+| `minimax(b, depth, alpha, beta, maximizing)` | `→ number` | Recursive minimax with alpha-beta pruning; returns heuristic score |
+| `getBestMove(b, depth)` | `→ number` | Tries each valid column (ordered center-out), runs minimax at `depth-1`, returns best column |
+| `chooseComputerCol()` | `→ number` | Easy → random valid column; Medium/Hard → `getBestMove` at the configured depth |
+
+**AI difficulty:**
+
+| Level | `DEPTH` | Strategy |
+|---|---|---|
+| Easy | — | `Math.random()` pick from `getValidCols` |
+| Medium | 3 | `getBestMove` → minimax depth 3 |
+| Hard | 7 | `getBestMove` → minimax depth 7 with alpha-beta |
+
+Column iteration order in `getBestMove` is center-out (`sort by |col - 3|`) to maximise alpha-beta cut-offs.
+
+#### Rendering
+
+| Function | Signature | Description |
+|---|---|---|
+| `renderBoard(winCells?)` | `→ void` | Rebuilds all `.cell` class lists from `board` state; applies `col-hover` and `win-cell` |
+| `setStatus(text, dotClass)` | `→ void` | Sets `#statusText` and the coloured dot class (`dot-player1 / dot-player2 / dot-draw`) |
+| `updateScoreDisplay()` | `→ void` | Writes `score.p1 / p2 / draw` into the three `<span>` score elements |
+
+#### Game flow
+
+| Function | Signature | Description |
+|---|---|---|
+| `initBoard()` | `→ void` | Resets `board`, `currentTurn`, `gameOver`, `animating`, `hoveredCol`; builds DOM on first call only |
+| `handleClick(col)` | `→ void` | Guards (`gameOver`, `animating`, `currentTurn`, full column) then calls `playMove` |
+| `playMove(col, player)` | `→ void` | Calls `dropPiece`, adds CSS drop animation, calls `afterMove` on `animationend` |
+| `afterMove(player)` | `→ void` | Checks win/draw → updates score/status; otherwise switches turn and schedules CPU move via `setTimeout` |
+
+**CPU think delay:** 200 ms (easy) / 300 ms (medium) / 400 ms (hard) — ensures the board re-paints before blocking JS computation.
 
 ---
 
 ## CSS / Visual Design
 
-- Dark blue theme with a gradient background
-- Red discs = Human player; Yellow discs = CPU
-- Drop animation: `@keyframes drop` (bounce effect, 380 ms)
-- Winning discs: `@keyframes pulse-win` (scale + glow, infinite)
-- Column hover: arrow turns red, column cells lighten
-- No external assets or fonts (uses `system-ui`)
+- Dark blue gradient background (`#1a1a2e → #16213e → #0f3460`)
+- Red discs (`#e94560`) = Human; Yellow discs (`#f5a623`) = CPU
+- Cell colours use `radial-gradient` for a 3-D sphere look
+- Column hover: cells lighten (`#122040`); arrow turns red
+- Drop animation: `@keyframes drop` — translateY from −360 px with a two-stage bounce, 380 ms
+- Win cells: `@keyframes pulse-win` — scale 1 → 1.12 + white glow, infinite alternate, 700 ms
+- No external assets, images, or web fonts — uses `'Segoe UI', system-ui`
+
+### CSS class reference
+
+| Class | Applied to | Meaning |
+|---|---|---|
+| `.player1` | `.cell` | Human disc (red gradient) |
+| `.player2` | `.cell` | CPU disc (yellow gradient) |
+| `.win-cell` | `.cell` | One of the 4 winning discs (pulse animation) |
+| `.col-hover` | `.cell` | Empty cell in the hovered column |
+| `.dropping` | `.cell` | Cell currently animating |
+| `.hovered` | `.col-arrow` | Arrow above the hovered column |
+| `.active` | `.diff-btn` | Currently selected difficulty button |
 
 ---
 
 ## Development Conventions
 
 ### Editing the game
-- Everything is in `index.html`. Use a `<style>` block for CSS, `<script>` for JS.
-- Do **not** split into separate files unless explicitly asked — the single-file approach is intentional.
-- Keep the JS comment section headers (`// ── Section ──`) so the file stays navigable.
+- Everything is in `index.html` — `<style>` for CSS, `<script>` for JS.
+- Do **not** split into separate files unless explicitly asked; the single-file approach is intentional.
+- Preserve the `// ─────────────────────` section-header comments so the file stays navigable.
+- DOM is built exactly **once** inside `initBoard()` (guarded by `if (boardGrid.children.length === 0)`). Subsequent calls to `initBoard()` only reset state and re-render.
 
 ### Testing
-- No automated test suite. Test manually in the browser.
-- Key scenarios to verify after any change:
-  1. Human wins (horizontal, vertical, diagonal ↘, diagonal ↗)
-  2. CPU wins
-  3. Draw (fill the board)
-  4. New Game resets board and score display remains
-  5. Difficulty buttons restart the game with correct AI depth
-  6. Clicking a full column is ignored
-  7. No input is accepted while the CPU is "thinking" (animating=true)
+No automated test suite. Test manually in the browser after any change:
+
+1. Human wins — horizontal, vertical, diagonal ↘, diagonal ↗
+2. CPU wins at each difficulty level
+3. Draw — fill the board completely
+4. New Game resets the board; cumulative score is preserved
+5. Difficulty buttons restart the game and use the correct AI depth
+6. Clicking a full column is ignored
+7. No input is accepted while `animating === true` (during drop or CPU think delay)
+8. Hovering columns highlights them; arrow appears only on Human's turn
 
 ### Adding features
-- New difficulty level: add an entry to `DEPTH` and a `.diff-btn` in the HTML.
-- Sound effects: hook into `afterMove` and `playMove`.
-- Network multiplayer: replace `chooseComputerCol()` with a WebSocket call.
+- **New difficulty level:** add an entry to `DEPTH` and a `.diff-btn[data-level]` button in the HTML.
+- **Sound effects:** hook `playMove` (on drop) and `afterMove` (on win/draw).
+- **Two-player mode:** bypass `chooseComputerCol()` and switch `currentTurn` for both players.
+- **Network multiplayer:** replace `chooseComputerCol()` with a WebSocket call.
+- **Responsive layout:** cell size (`60px`) is hardcoded in both CSS grid and the `@keyframes drop` translateY; both must be updated together.
 
 ---
 
