@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>4 Wins</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      color: #fff;
+      user-select: none;
+    }
+
+    h1 {
+      font-size: 2.8rem;
+      font-weight: 800;
+      letter-spacing: 2px;
+      margin-bottom: 0.3rem;
+      background: linear-gradient(90deg, #e94560, #f5a623);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: #8899aa;
+      margin-bottom: 1.5rem;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    /* ── Difficulty selector ── */
+    .difficulty-row {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.2rem;
+      align-items: center;
+    }
+
+    .difficulty-row label {
+      font-size: 0.85rem;
+      color: #aab;
+      margin-right: 0.3rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .diff-btn {
+      padding: 0.4rem 1.1rem;
+      border: 2px solid #334;
+      border-radius: 20px;
+      background: transparent;
+      color: #aab;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      transition: all 0.2s;
+    }
+
+    .diff-btn:hover { border-color: #f5a623; color: #f5a623; }
+
+    .diff-btn.active {
+      background: #f5a623;
+      border-color: #f5a623;
+      color: #1a1a2e;
+    }
+
+    /* ── Game board shell ── */
+    .board-wrapper {
+      background: #1a3a6b;
+      border-radius: 16px;
+      padding: 14px 14px 18px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05);
+    }
+
+    /* Column hover arrows */
+    .col-arrows {
+      display: grid;
+      grid-template-columns: repeat(7, 60px);
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .col-arrow {
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 1rem;
+      color: transparent;
+      transition: color 0.15s;
+      border-radius: 6px;
+    }
+
+    .col-arrow.hovered { color: #e94560; }
+
+    /* Grid */
+    .board-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 60px);
+      grid-template-rows: repeat(6, 60px);
+      gap: 8px;
+    }
+
+    .cell {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: #0d1f3c;
+      box-shadow: inset 0 4px 8px rgba(0,0,0,0.6);
+      cursor: pointer;
+      transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .cell::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background: transparent;
+      transition: background 0.2s;
+    }
+
+    .cell.col-hover { background: #122040; }
+
+    .cell.player1 {
+      background: radial-gradient(circle at 35% 35%, #ff7b7b, #e94560);
+      box-shadow: inset 0 -3px 6px rgba(0,0,0,0.3), 0 0 12px rgba(233,69,96,0.4);
+      cursor: default;
+    }
+
+    .cell.player2 {
+      background: radial-gradient(circle at 35% 35%, #ffe07b, #f5a623);
+      box-shadow: inset 0 -3px 6px rgba(0,0,0,0.3), 0 0 12px rgba(245,166,35,0.4);
+      cursor: default;
+    }
+
+    .cell.win-cell {
+      animation: pulse-win 0.7s ease-in-out infinite alternate;
+      z-index: 1;
+    }
+
+    @keyframes pulse-win {
+      from { transform: scale(1);   box-shadow: inset 0 -3px 6px rgba(0,0,0,0.3), 0 0 12px rgba(255,255,255,0.3); }
+      to   { transform: scale(1.12); box-shadow: inset 0 -3px 6px rgba(0,0,0,0.3), 0 0 24px rgba(255,255,255,0.8); }
+    }
+
+    /* Drop animation */
+    @keyframes drop {
+      0%   { transform: translateY(-360px); }
+      70%  { transform: translateY(6px); }
+      85%  { transform: translateY(-4px); }
+      100% { transform: translateY(0); }
+    }
+
+    .cell.dropping { animation: drop 0.38s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards; }
+
+    /* ── Status bar ── */
+    .status-bar {
+      margin-top: 1.2rem;
+      height: 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.6rem;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .status-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .dot-player1 { background: #e94560; box-shadow: 0 0 8px #e94560; }
+    .dot-player2 { background: #f5a623; box-shadow: 0 0 8px #f5a623; }
+    .dot-draw    { background: #8899aa; }
+
+    /* ── Score ── */
+    .score-row {
+      display: flex;
+      gap: 2rem;
+      justify-content: center;
+      margin-top: 0.8rem;
+      font-size: 0.82rem;
+      color: #8899aa;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .score-item span {
+      font-size: 1.3rem;
+      font-weight: 800;
+      margin-left: 0.4rem;
+    }
+
+    .score-item.p1 span { color: #e94560; }
+    .score-item.p2 span { color: #f5a623; }
+    .score-item.dr span { color: #8899aa; }
+
+    /* ── New Game button ── */
+    .new-game-btn {
+      margin-top: 1.2rem;
+      padding: 0.6rem 2rem;
+      border: none;
+      border-radius: 24px;
+      background: linear-gradient(90deg, #e94560, #f5a623);
+      color: #fff;
+      font-size: 0.9rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(233,69,96,0.35);
+      transition: opacity 0.2s, transform 0.15s;
+    }
+
+    .new-game-btn:hover { opacity: 0.88; transform: translateY(-1px); }
+    .new-game-btn:active { transform: translateY(0); }
+
+    /* ── Legend ── */
+    .legend {
+      display: flex;
+      gap: 1.5rem;
+      margin-top: 1rem;
+      font-size: 0.78rem;
+      color: #667;
+    }
+
+    .legend-item { display: flex; align-items: center; gap: 0.4rem; }
+
+    .legend-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+  </style>
+</head>
+<body>
+
+<h1>4 WINS</h1>
+<p class="subtitle">Connect Four &mdash; Human vs Computer</p>
+
+<!-- Difficulty -->
+<div class="difficulty-row">
+  <label>Difficulty:</label>
+  <button class="diff-btn active" data-level="easy">Easy</button>
+  <button class="diff-btn"        data-level="medium">Medium</button>
+  <button class="diff-btn"        data-level="hard">Hard</button>
+</div>
+
+<!-- Board -->
+<div class="board-wrapper">
+  <div class="col-arrows" id="colArrows"></div>
+  <div class="board-grid"  id="boardGrid"></div>
+</div>
+
+<!-- Status -->
+<div class="status-bar" id="statusBar">
+  <div class="status-dot dot-player1"></div>
+  <span id="statusText">Your turn</span>
+</div>
+
+<!-- Score -->
+<div class="score-row">
+  <div class="score-item p1">You<span id="scoreP1">0</span></div>
+  <div class="score-item dr">Draws<span id="scoreDraw">0</span></div>
+  <div class="score-item p2">CPU<span id="scoreP2">0</span></div>
+</div>
+
+<!-- New Game -->
+<button class="new-game-btn" id="newGameBtn">New Game</button>
+
+<!-- Legend -->
+<div class="legend">
+  <div class="legend-item">
+    <div class="legend-dot" style="background:#e94560;"></div> You (Red)
+  </div>
+  <div class="legend-item">
+    <div class="legend-dot" style="background:#f5a623;"></div> CPU (Yellow)
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+//  Constants
+// ─────────────────────────────────────────────
+const ROWS = 6;
+const COLS = 7;
+const HUMAN = 1;
+const CPU   = 2;
+const EMPTY = 0;
+
+const DEPTH = { easy: 0, medium: 3, hard: 7 };
+
+// ─────────────────────────────────────────────
+//  State
+// ─────────────────────────────────────────────
+let board       = [];
+let currentTurn = HUMAN;   // whose turn
+let gameOver    = false;
+let difficulty  = 'easy';
+let hoveredCol  = -1;
+let score       = { p1: 0, p2: 0, draw: 0 };
+let animating   = false;   // block clicks during drop animation / AI thinking
+
+// ─────────────────────────────────────────────
+//  DOM references (built once)
+// ─────────────────────────────────────────────
+const boardGrid  = document.getElementById('boardGrid');
+const colArrows  = document.getElementById('colArrows');
+const statusText = document.getElementById('statusText');
+const statusBar  = document.getElementById('statusBar');
+const scoreP1    = document.getElementById('scoreP1');
+const scoreP2    = document.getElementById('scoreP2');
+const scoreDraw  = document.getElementById('scoreDraw');
+const newGameBtn = document.getElementById('newGameBtn');
+
+// ─────────────────────────────────────────────
+//  Board logic
+// ─────────────────────────────────────────────
+function createBoard() {
+  return Array.from({ length: ROWS }, () => new Array(COLS).fill(EMPTY));
+}
+
+function getValidCols(b) {
+  const valid = [];
+  for (let c = 0; c < COLS; c++) if (b[0][c] === EMPTY) valid.push(c);
+  return valid;
+}
+
+function dropPiece(b, col, player) {
+  for (let r = ROWS - 1; r >= 0; r--) {
+    if (b[r][col] === EMPTY) {
+      b[r][col] = player;
+      return r;
+    }
+  }
+  return -1;
+}
+
+function undropPiece(b, col) {
+  for (let r = 0; r < ROWS; r++) {
+    if (b[r][col] !== EMPTY) { b[r][col] = EMPTY; return; }
+  }
+}
+
+// Returns { player, cells: [[r,c],...] } or null
+function checkWinner(b) {
+  const dirs = [[0,1],[1,0],[1,1],[1,-1]];
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const p = b[r][c];
+      if (p === EMPTY) continue;
+      for (const [dr,dc] of dirs) {
+        const cells = [[r,c]];
+        for (let i = 1; i < 4; i++) {
+          const nr = r + dr*i, nc = c + dc*i;
+          if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS || b[nr][nc] !== p) break;
+          cells.push([nr,nc]);
+        }
+        if (cells.length === 4) return { player: p, cells };
+      }
+    }
+  }
+  return null;
+}
+
+function isBoardFull(b) {
+  return b[0].every(v => v !== EMPTY);
+}
+
+// ─────────────────────────────────────────────
+//  AI — Heuristic
+// ─────────────────────────────────────────────
+function scoreWindow(window, player) {
+  const opp = player === CPU ? HUMAN : CPU;
+  const pCount = window.filter(v => v === player).length;
+  const oCount = window.filter(v => v === opp).length;
+  const eCount = window.filter(v => v === EMPTY).length;
+
+  if (pCount === 4)             return 100000;
+  if (pCount === 3 && eCount === 1) return 10;
+  if (pCount === 2 && eCount === 2) return 3;
+  if (oCount === 3 && eCount === 1) return -80;
+  return 0;
+}
+
+function evaluateBoard(b, player) {
+  let score = 0;
+
+  // Center column preference
+  const centerCol = Math.floor(COLS / 2);
+  const centerArray = b.map(row => row[centerCol]);
+  score += centerArray.filter(v => v === player).length * 6;
+
+  // Horizontal
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c <= COLS - 4; c++) {
+      const w = [b[r][c], b[r][c+1], b[r][c+2], b[r][c+3]];
+      score += scoreWindow(w, player);
+    }
+  }
+
+  // Vertical
+  for (let c = 0; c < COLS; c++) {
+    for (let r = 0; r <= ROWS - 4; r++) {
+      const w = [b[r][c], b[r+1][c], b[r+2][c], b[r+3][c]];
+      score += scoreWindow(w, player);
+    }
+  }
+
+  // Diagonal ↘
+  for (let r = 0; r <= ROWS - 4; r++) {
+    for (let c = 0; c <= COLS - 4; c++) {
+      const w = [b[r][c], b[r+1][c+1], b[r+2][c+2], b[r+3][c+3]];
+      score += scoreWindow(w, player);
+    }
+  }
+
+  // Diagonal ↗
+  for (let r = 3; r < ROWS; r++) {
+    for (let c = 0; c <= COLS - 4; c++) {
+      const w = [b[r][c], b[r-1][c+1], b[r-2][c+2], b[r-3][c+3]];
+      score += scoreWindow(w, player);
+    }
+  }
+
+  return score;
+}
+
+// ─────────────────────────────────────────────
+//  AI — Minimax with alpha-beta pruning
+// ─────────────────────────────────────────────
+function minimax(b, depth, alpha, beta, maximizing) {
+  const winner = checkWinner(b);
+  if (winner) return winner.player === CPU ? 100000 + depth : -(100000 + depth);
+  if (isBoardFull(b) || depth === 0) return evaluateBoard(b, CPU);
+
+  const validCols = getValidCols(b);
+
+  if (maximizing) {
+    let best = -Infinity;
+    for (const col of validCols) {
+      dropPiece(b, col, CPU);
+      best = Math.max(best, minimax(b, depth - 1, alpha, beta, false));
+      undropPiece(b, col);
+      alpha = Math.max(alpha, best);
+      if (alpha >= beta) break;
+    }
+    return best;
+  } else {
+    let best = Infinity;
+    for (const col of validCols) {
+      dropPiece(b, col, HUMAN);
+      best = Math.min(best, minimax(b, depth - 1, alpha, beta, true));
+      undropPiece(b, col);
+      beta = Math.min(beta, best);
+      if (alpha >= beta) break;
+    }
+    return best;
+  }
+}
+
+function getBestMove(b, depth) {
+  const validCols = getValidCols(b);
+  let bestScore = -Infinity;
+  let bestCol   = validCols[Math.floor(Math.random() * validCols.length)];
+
+  // Prioritize columns near the center for tie-breaking
+  const ordered = [...validCols].sort((a, b) =>
+    Math.abs(a - (COLS-1)/2) - Math.abs(b - (COLS-1)/2)
+  );
+
+  for (const col of ordered) {
+    dropPiece(b, col, CPU);
+    const s = minimax(b, depth - 1, -Infinity, Infinity, false);
+    undropPiece(b, col);
+    if (s > bestScore) { bestScore = s; bestCol = col; }
+  }
+  return bestCol;
+}
+
+function chooseComputerCol() {
+  const valid = getValidCols(board);
+  if (valid.length === 0) return -1;
+
+  if (difficulty === 'easy') {
+    return valid[Math.floor(Math.random() * valid.length)];
+  }
+
+  const depth = DEPTH[difficulty];
+
+  // Quick win/block check always (even on medium/hard just via minimax)
+  return getBestMove(board, depth);
+}
+
+// ─────────────────────────────────────────────
+//  Rendering
+// ─────────────────────────────────────────────
+function renderBoard(winCells) {
+  const winSet = new Set((winCells || []).map(([r,c]) => `${r},${c}`));
+
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const cell = document.querySelector(`[data-r="${r}"][data-c="${c}"]`);
+      if (!cell) continue;
+      const v = board[r][c];
+      cell.className = 'cell';
+      if (v === HUMAN) cell.classList.add('player1');
+      if (v === CPU)   cell.classList.add('player2');
+      if (winSet.has(`${r},${c}`)) cell.classList.add('win-cell');
+      if (!gameOver && v === EMPTY && c === hoveredCol) cell.classList.add('col-hover');
+    }
+  }
+
+  // Update arrows
+  for (let c = 0; c < COLS; c++) {
+    const arrow = document.querySelector(`[data-arrow="${c}"]`);
+    if (!arrow) continue;
+    arrow.className = 'col-arrow';
+    if (c === hoveredCol && !gameOver && currentTurn === HUMAN) {
+      arrow.classList.add('hovered');
+    }
+  }
+}
+
+function setStatus(text, dotClass) {
+  const dot = statusBar.querySelector('.status-dot');
+  dot.className = 'status-dot ' + (dotClass || 'dot-player1');
+  statusText.textContent = text;
+}
+
+function updateScoreDisplay() {
+  scoreP1.textContent  = score.p1;
+  scoreP2.textContent  = score.p2;
+  scoreDraw.textContent = score.draw;
+}
+
+// ─────────────────────────────────────────────
+//  Game flow
+// ─────────────────────────────────────────────
+function initBoard() {
+  // Build DOM cells once; subsequent games just reset classes
+  if (boardGrid.children.length === 0) {
+    // Arrow row
+    for (let c = 0; c < COLS; c++) {
+      const arrow = document.createElement('div');
+      arrow.className = 'col-arrow';
+      arrow.dataset.arrow = c;
+      arrow.textContent = '▼';
+      arrow.addEventListener('click',       () => handleClick(c));
+      arrow.addEventListener('mouseenter',  () => { hoveredCol = c; renderBoard(); });
+      arrow.addEventListener('mouseleave',  () => { hoveredCol = -1; renderBoard(); });
+      colArrows.appendChild(arrow);
+    }
+
+    // Grid cells
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.dataset.r = r;
+        cell.dataset.c = c;
+        cell.addEventListener('click',       () => handleClick(c));
+        cell.addEventListener('mouseenter',  () => { hoveredCol = c; renderBoard(); });
+        cell.addEventListener('mouseleave',  () => { hoveredCol = -1; renderBoard(); });
+        boardGrid.appendChild(cell);
+      }
+    }
+  }
+
+  board       = createBoard();
+  currentTurn = HUMAN;
+  gameOver    = false;
+  animating   = false;
+  hoveredCol  = -1;
+
+  renderBoard();
+  setStatus('Your turn', 'dot-player1');
+}
+
+function handleClick(col) {
+  if (gameOver || animating || currentTurn !== HUMAN) return;
+  if (board[0][col] !== EMPTY) return;   // column full
+
+  playMove(col, HUMAN);
+}
+
+function playMove(col, player) {
+  animating = true;
+  const row = dropPiece(board, col, player);
+  if (row === -1) { animating = false; return; }
+
+  // Animate drop
+  const cell = document.querySelector(`[data-r="${row}"][data-c="${col}"]`);
+  cell.classList.add(player === HUMAN ? 'player1' : 'player2', 'dropping');
+  cell.addEventListener('animationend', () => {
+    cell.classList.remove('dropping');
+    afterMove(player);
+  }, { once: true });
+}
+
+function afterMove(player) {
+  const result = checkWinner(board);
+
+  if (result) {
+    gameOver  = true;
+    animating = false;
+    renderBoard(result.cells);
+    if (result.player === HUMAN) {
+      score.p1++;
+      setStatus('You win! 🎉', 'dot-player1');
+    } else {
+      score.p2++;
+      setStatus('CPU wins!', 'dot-player2');
+    }
+    updateScoreDisplay();
+    return;
+  }
+
+  if (isBoardFull(board)) {
+    gameOver  = true;
+    animating = false;
+    score.draw++;
+    setStatus('Draw!', 'dot-draw');
+    updateScoreDisplay();
+    renderBoard();
+    return;
+  }
+
+  // Switch turn
+  currentTurn = player === HUMAN ? CPU : HUMAN;
+  renderBoard();
+
+  if (currentTurn === CPU) {
+    setStatus('CPU is thinking…', 'dot-player2');
+    // Defer AI so the board renders first
+    setTimeout(() => {
+      const col = chooseComputerCol();
+      if (col !== -1) playMove(col, CPU);
+      else { animating = false; }
+    }, difficulty === 'easy' ? 200 : difficulty === 'medium' ? 300 : 400);
+  } else {
+    animating = false;
+    setStatus('Your turn', 'dot-player1');
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Event listeners
+// ─────────────────────────────────────────────
+document.querySelectorAll('.diff-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    difficulty = btn.dataset.level;
+    document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    initBoard();   // restart game when difficulty changes
+  });
+});
+
+newGameBtn.addEventListener('click', initBoard);
+
+// ─────────────────────────────────────────────
+//  Start
+// ─────────────────────────────────────────────
+initBoard();
+</script>
+</body>
+</html>
