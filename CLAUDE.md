@@ -156,11 +156,18 @@ Column iteration order in `getBestMove` is center-out (`sort by |col - 3|`) to m
 
 ## CSS / Visual Design
 
+### CSS custom properties (`:root`)
+
+| Property | Value | Purpose |
+|---|---|---|
+| `--cell` | `clamp(32px, min(calc((100vw-120px)/7), calc((100vh-300px)/6)), 60px)` | Fluid cell size — respects both viewport width and height |
+| `--gap` | `8px` | Gap between cells and arrow columns |
+
 - Dark blue gradient background (`#1a1a2e → #16213e → #0f3460`)
 - Red discs (`#e94560`) = Human; Yellow discs (`#f5a623`) = CPU
 - Cell colours use `radial-gradient` for a 3-D sphere look
 - Column hover: cells lighten (`#122040`); arrow turns red
-- Drop animation: `@keyframes drop` — translateY from −360 px with a two-stage bounce, 380 ms
+- Drop animation: `@keyframes drop` — translateY from `calc(var(--cell) * -6)` with a two-stage bounce, 380 ms
 - Win cells: `@keyframes pulse-win` — scale 1 → 1.12 + white glow, infinite alternate, 700 ms
 - No external assets, images, or web fonts — uses `'Segoe UI', system-ui`
 
@@ -203,7 +210,7 @@ No automated test suite. Test manually in the browser after any change:
 - **Sound effects:** hook `playMove` (on drop) and `afterMove` (on win/draw).
 - **Two-player mode:** bypass `chooseComputerCol()` and switch `currentTurn` for both players.
 - **Network multiplayer:** replace `chooseComputerCol()` with a WebSocket call.
-- **Responsive layout:** cell size (`60px`) is hardcoded in both CSS grid and the `@keyframes drop` translateY; both must be updated together.
+- **Responsive layout:** cell size is driven by the `--cell` CSS custom property on `:root` — a `clamp(32px, min(vw-formula, vh-formula), 60px)` expression. All grid column/row definitions, `.cell` width/height, and the `@keyframes drop` translateY reference `var(--cell)`, so changing the formula automatically updates the entire layout.
 
 ---
 
