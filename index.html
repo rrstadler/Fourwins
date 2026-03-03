@@ -836,8 +836,15 @@ function afterMove(player) {
       setStatus('You win! 🎉', 'dot-player1');
     } else {
       score.p2++;
-      // CPU's winning move — show info button if explain mode is on
-      explainInfoBtn.hidden = !(explainMode && lastCpuExplanation);
+      // CPU's winning move — auto-show explanation if explain mode is on
+      if (explainMode && lastCpuExplanation) {
+        explainInfoBtn.hidden = false;
+        explainText.textContent          = lastCpuExplanation.reason;
+        explainLookaheadText.textContent = lastCpuExplanation.lookahead;
+        explainPopup.hidden = false;
+      } else {
+        explainInfoBtn.hidden = true;
+      }
       setStatus('CPU wins!', 'dot-player2');
     }
     updateScoreDisplay();
@@ -870,8 +877,15 @@ function afterMove(player) {
   } else {
     animating = false;
     setStatus('Your turn', 'dot-player1');
-    // CPU just played — show info button if explain mode is on
-    explainInfoBtn.hidden = !(explainMode && lastCpuExplanation);
+    // CPU just played — auto-show explanation if explain mode is on
+    if (explainMode && lastCpuExplanation) {
+      explainInfoBtn.hidden = false;
+      explainText.textContent          = lastCpuExplanation.reason;
+      explainLookaheadText.textContent = lastCpuExplanation.lookahead;
+      explainPopup.hidden = false;
+    } else {
+      explainInfoBtn.hidden = true;
+    }
   }
 }
 

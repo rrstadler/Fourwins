@@ -156,7 +156,7 @@ Column iteration order in `getBestMove` is center-out (`sort by |col - 3|`) to m
 2. **Block** — placing HUMAN in `col` → `checkWinner` returns HUMAN
 3. **Strategic fallback** — best position after lookahead
 
-The info button (`#explainInfoBtn`) is shown after each CPU move when `explainMode === true` and `lastCpuExplanation !== null`. Clicking it opens `#explainPopup`. The popup is dismissed by the close button or clicking the overlay backdrop.
+After each CPU move, when `explainMode === true` and `lastCpuExplanation !== null`, the popup (`#explainPopup`) opens **automatically** with the explanation pre-filled. The `#explainInfoBtn` (ⓘ) is also revealed so the user can re-open the popup if they closed it. The popup is dismissed by the close button or clicking the overlay backdrop.
 
 #### Game flow
 
