@@ -53,13 +53,15 @@ The five sections in order are: **Constants → State → DOM references → Boa
   <h1>                        — gradient title
   <p.subtitle>                — tagline
   <div.difficulty-row>        — Easy / Medium / Hard buttons (.diff-btn[data-level])
+  <div.explain-row>           — Explain Mode toggle (#explainToggleBtn)
   <div.board-wrapper>
     <div#colArrows>           — 7 ▼ arrow divs (.col-arrow[data-arrow=c])
     <div#boardGrid>           — 42 cell divs (.cell[data-r][data-c])
-  <div#statusBar>             — coloured dot + <span#statusText>
+  <div#statusBar>             — coloured dot + <span#statusText> + #explainInfoBtn (ⓘ)
   <div.score-row>             — <span#scoreP1> <span#scoreDraw> <span#scoreP2>
   <button#newGameBtn>
   <div.legend>
+  <div#explainPopup>          — fixed overlay; contains .explain-popup-card with reason + lookahead
 ```
 
 ### Constants
@@ -82,6 +84,8 @@ DEPTH = { easy: 0, medium: 3, hard: 7 }
 | `hoveredCol` | `number` | Column index under the cursor (-1 = none); drives hover highlighting |
 | `animating` | `boolean` | Blocks clicks during drop animation or AI delay |
 | `score` | `{p1,p2,draw}` | Cumulative score across games (never resets on New Game) |
+| `explainMode` | `boolean` | Whether explanation mode is enabled |
+| `lastCpuExplanation` | `{reason, lookahead}\|null` | Plain-language explanation of the most recent CPU move |
 
 ### Key Functions
 
@@ -141,11 +145,24 @@ Column iteration order in `getBestMove` is center-out (`sort by |col - 3|`) to m
 | `setStatus(text, dotClass)` | `→ void` | Sets `#statusText` and the coloured dot class (`dot-player1 / dot-player2 / dot-draw`) |
 | `updateScoreDisplay()` | `→ void` | Writes `score.p1 / p2 / draw` into the three `<span>` score elements |
 
+#### Explanation mode
+
+| Function | Signature | Description |
+|---|---|---|
+| `generateExplanation(col)` | `→ {reason, lookahead}` | Called inside `chooseComputerCol()` **before** the piece is placed. Checks for immediate win, blocking move, or strategic play; returns plain-language strings for the popup |
+
+`generateExplanation` priority order:
+1. **Immediate win** — placing CPU in `col` → `checkWinner` returns CPU
+2. **Block** — placing HUMAN in `col` → `checkWinner` returns HUMAN
+3. **Strategic fallback** — best position after lookahead
+
+The info button (`#explainInfoBtn`) is shown after each CPU move when `explainMode === true` and `lastCpuExplanation !== null`. Clicking it opens `#explainPopup`. The popup is dismissed by the close button or clicking the overlay backdrop.
+
 #### Game flow
 
 | Function | Signature | Description |
 |---|---|---|
-| `initBoard()` | `→ void` | Resets `board`, `currentTurn`, `gameOver`, `animating`, `hoveredCol`; builds DOM on first call only |
+| `initBoard()` | `→ void` | Resets `board`, `currentTurn`, `gameOver`, `animating`, `hoveredCol`, `lastCpuExplanation`; builds DOM on first call only |
 | `handleClick(col)` | `→ void` | Guards (`gameOver`, `animating`, `currentTurn`, full column) then calls `playMove` |
 | `playMove(col, player)` | `→ void` | Calls `dropPiece`, adds CSS drop animation, calls `afterMove` on `animationend` |
 | `afterMove(player)` | `→ void` | Checks win/draw → updates score/status; otherwise switches turn and schedules CPU move via `setTimeout` |
@@ -182,6 +199,7 @@ Column iteration order in `getBestMove` is center-out (`sort by |col - 3|`) to m
 | `.dropping` | `.cell` | Cell currently animating |
 | `.hovered` | `.col-arrow` | Arrow above the hovered column |
 | `.active` | `.diff-btn` | Currently selected difficulty button |
+| `.active` | `.explain-toggle-btn` | Explain mode is enabled |
 
 ---
 

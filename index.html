@@ -261,6 +261,120 @@
       height: 12px;
       border-radius: 50%;
     }
+
+    /* ── Explain mode ── */
+    .explain-row {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 0.8rem;
+    }
+
+    .explain-toggle-btn {
+      padding: 0.3rem 0.9rem;
+      border: 2px solid #334;
+      border-radius: 20px;
+      background: transparent;
+      color: #8899aa;
+      cursor: pointer;
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      transition: all 0.2s;
+    }
+
+    .explain-toggle-btn:hover { border-color: #7ec8e3; color: #7ec8e3; }
+
+    .explain-toggle-btn.active {
+      border-color: #7ec8e3;
+      color: #7ec8e3;
+      background: rgba(126,200,227,0.12);
+    }
+
+    .explain-info-btn {
+      background: none;
+      border: 1.5px solid rgba(126,200,227,0.45);
+      border-radius: 50%;
+      color: #7ec8e3;
+      width: 20px;
+      height: 20px;
+      font-size: 0.7rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+
+    .explain-info-btn:hover {
+      background: rgba(126,200,227,0.2);
+      border-color: #7ec8e3;
+    }
+
+    .explain-popup {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 1rem;
+    }
+
+    .explain-popup[hidden] { display: none; }
+
+    .explain-popup-card {
+      background: #0d2344;
+      border: 1px solid rgba(126,200,227,0.25);
+      border-radius: 16px;
+      padding: 1.4rem 1.5rem 1.2rem;
+      max-width: 360px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+    }
+
+    .explain-popup-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.9rem;
+    }
+
+    .explain-popup-header span {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: #7ec8e3;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .explain-close-btn {
+      background: none;
+      border: none;
+      color: #556;
+      cursor: pointer;
+      font-size: 1rem;
+      line-height: 1;
+      padding: 0;
+      transition: color 0.15s;
+    }
+
+    .explain-close-btn:hover { color: #fff; }
+
+    .explain-popup-reason {
+      font-size: 0.92rem;
+      line-height: 1.65;
+      color: #ccd;
+      margin-bottom: 0.75rem;
+    }
+
+    .explain-popup-lookahead {
+      font-size: 0.75rem;
+      color: #667788;
+      font-style: italic;
+    }
   </style>
 </head>
 <body>
@@ -276,6 +390,11 @@
   <button class="diff-btn"        data-level="hard">Hard</button>
 </div>
 
+<!-- Explain mode toggle -->
+<div class="explain-row">
+  <button id="explainToggleBtn" class="explain-toggle-btn">ⓘ Explain Mode: <span id="explainToggleState">OFF</span></button>
+</div>
+
 <!-- Board -->
 <div class="board-wrapper">
   <div class="col-arrows" id="colArrows"></div>
@@ -286,6 +405,7 @@
 <div class="status-bar" id="statusBar">
   <div class="status-dot dot-player1"></div>
   <span id="statusText">Your turn</span>
+  <button id="explainInfoBtn" class="explain-info-btn" hidden title="Why did CPU play there?">ⓘ</button>
 </div>
 
 <!-- Score -->
@@ -305,6 +425,18 @@
   </div>
   <div class="legend-item">
     <div class="legend-dot" style="background:#f5a623;"></div> CPU (Yellow)
+  </div>
+</div>
+
+<!-- Explain mode popup -->
+<div id="explainPopup" class="explain-popup" hidden>
+  <div class="explain-popup-card">
+    <div class="explain-popup-header">
+      <span>Why did CPU play there?</span>
+      <button id="explainCloseBtn" class="explain-close-btn" title="Close">✕</button>
+    </div>
+    <p id="explainText" class="explain-popup-reason"></p>
+    <p id="explainLookaheadText" class="explain-popup-lookahead"></p>
   </div>
 </div>
 
@@ -330,6 +462,8 @@ let difficulty  = 'easy';
 let hoveredCol  = -1;
 let score       = { p1: 0, p2: 0, draw: 0 };
 let animating   = false;   // block clicks during drop animation / AI thinking
+let explainMode        = false;
+let lastCpuExplanation = null;
 
 // ─────────────────────────────────────────────
 //  DOM references (built once)
@@ -342,6 +476,14 @@ const scoreP1    = document.getElementById('scoreP1');
 const scoreP2    = document.getElementById('scoreP2');
 const scoreDraw  = document.getElementById('scoreDraw');
 const newGameBtn = document.getElementById('newGameBtn');
+
+const explainToggleBtn     = document.getElementById('explainToggleBtn');
+const explainToggleStateEl = document.getElementById('explainToggleState');
+const explainInfoBtn       = document.getElementById('explainInfoBtn');
+const explainPopup         = document.getElementById('explainPopup');
+const explainText          = document.getElementById('explainText');
+const explainLookaheadText = document.getElementById('explainLookaheadText');
+const explainCloseBtn      = document.getElementById('explainCloseBtn');
 
 // ─────────────────────────────────────────────
 //  Board logic
@@ -513,13 +655,63 @@ function chooseComputerCol() {
   if (valid.length === 0) return -1;
 
   if (difficulty === 'easy') {
-    return valid[Math.floor(Math.random() * valid.length)];
+    const col = valid[Math.floor(Math.random() * valid.length)];
+    if (explainMode) lastCpuExplanation = generateExplanation(col);
+    return col;
   }
 
   const depth = DEPTH[difficulty];
 
   // Quick win/block check always (even on medium/hard just via minimax)
-  return getBestMove(board, depth);
+  const col = getBestMove(board, depth);
+  if (explainMode) lastCpuExplanation = generateExplanation(col);
+  return col;
+}
+
+// ─────────────────────────────────────────────
+//  Explanation mode
+// ─────────────────────────────────────────────
+// Generates a plain-language explanation for why the CPU chose `col`.
+// Must be called BEFORE the piece is placed on the real board.
+function generateExplanation(col) {
+  const colLabel = `column ${col + 1}`;
+
+  if (difficulty === 'easy') {
+    return {
+      reason:    `I picked ${colLabel} at random — in Easy mode I don't plan ahead at all, I just choose any free column!`,
+      lookahead: 'Lookahead: none (random choice).'
+    };
+  }
+
+  const d = DEPTH[difficulty];
+  const lookahead = `I thought ${d} move${d !== 1 ? 's' : ''} ahead (${difficulty} difficulty).`;
+
+  // 1. Immediate win?
+  const winTest = board.map(r => [...r]);
+  dropPiece(winTest, col, CPU);
+  if (checkWinner(winTest)) {
+    return {
+      reason:    `Playing in ${colLabel} completes 4 in a row — that's an immediate win, so it's the obvious best move!`,
+      lookahead
+    };
+  }
+
+  // 2. Block human win?
+  const blockTest = board.map(r => [...r]);
+  dropPiece(blockTest, col, HUMAN);
+  if (checkWinner(blockTest)) {
+    return {
+      reason:    `You were one piece away from winning in ${colLabel}! I had to play there to block your 4 in a row.`,
+      lookahead
+    };
+  }
+
+  // 3. Strategic — generic fallback
+  const open = getValidCols(board).length;
+  return {
+    reason:    `After evaluating all ${open} open column${open !== 1 ? 's' : ''}, ${colLabel} scored highest — it builds the best board position for me while limiting your options.`,
+    lookahead
+  };
 }
 
 // ─────────────────────────────────────────────
@@ -602,6 +794,9 @@ function initBoard() {
   gameOver    = false;
   animating   = false;
   hoveredCol  = -1;
+  lastCpuExplanation  = null;
+  explainInfoBtn.hidden = true;
+  explainPopup.hidden   = true;
 
   renderBoard();
   setStatus('Your turn', 'dot-player1');
@@ -637,9 +832,12 @@ function afterMove(player) {
     renderBoard(result.cells);
     if (result.player === HUMAN) {
       score.p1++;
+      explainInfoBtn.hidden = true;
       setStatus('You win! 🎉', 'dot-player1');
     } else {
       score.p2++;
+      // CPU's winning move — show info button if explain mode is on
+      explainInfoBtn.hidden = !(explainMode && lastCpuExplanation);
       setStatus('CPU wins!', 'dot-player2');
     }
     updateScoreDisplay();
@@ -661,6 +859,7 @@ function afterMove(player) {
   renderBoard();
 
   if (currentTurn === CPU) {
+    explainInfoBtn.hidden = true;   // hide stale info while CPU thinks
     setStatus('CPU is thinking…', 'dot-player2');
     // Defer AI so the board renders first
     setTimeout(() => {
@@ -671,6 +870,8 @@ function afterMove(player) {
   } else {
     animating = false;
     setStatus('Your turn', 'dot-player1');
+    // CPU just played — show info button if explain mode is on
+    explainInfoBtn.hidden = !(explainMode && lastCpuExplanation);
   }
 }
 
@@ -687,6 +888,32 @@ document.querySelectorAll('.diff-btn').forEach(btn => {
 });
 
 newGameBtn.addEventListener('click', initBoard);
+
+// Explain mode
+explainToggleBtn.addEventListener('click', () => {
+  explainMode = !explainMode;
+  explainToggleBtn.classList.toggle('active', explainMode);
+  explainToggleStateEl.textContent = explainMode ? 'ON' : 'OFF';
+  if (!explainMode) {
+    explainInfoBtn.hidden = true;
+    explainPopup.hidden   = true;
+  }
+});
+
+explainInfoBtn.addEventListener('click', () => {
+  if (!lastCpuExplanation) return;
+  explainText.textContent          = lastCpuExplanation.reason;
+  explainLookaheadText.textContent = lastCpuExplanation.lookahead;
+  explainPopup.hidden = false;
+});
+
+explainCloseBtn.addEventListener('click', () => {
+  explainPopup.hidden = true;
+});
+
+explainPopup.addEventListener('click', e => {
+  if (e.target === explainPopup) explainPopup.hidden = true;
+});
 
 // ─────────────────────────────────────────────
 //  Start
