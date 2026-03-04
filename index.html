@@ -757,10 +757,19 @@ function playMove(col, player) {
   // Animate drop
   const cell = document.querySelector(`[data-r="${row}"][data-c="${col}"]`);
   cell.classList.add(player === HUMAN ? 'player1' : 'player2', 'dropping');
-  cell.addEventListener('animationend', () => {
+
+  // Safety: if animationend never fires (event-loop starvation, prefers-reduced-motion,
+  // or any other reason), this fallback ensures afterMove is always called and
+  // the animating flag can never stay stuck at true.
+  let done = false;
+  function finish() {
+    if (done) return;
+    done = true;
     cell.classList.remove('dropping');
     afterMove(player);
-  }, { once: true });
+  }
+  setTimeout(finish, 600);                           // animation is 380 ms
+  cell.addEventListener('animationend', finish, { once: true });
 }
 
 function afterMove(player) {
@@ -831,6 +840,7 @@ function afterMove(player) {
 let musicOn      = false;
 let audioCtx     = null;
 let beatInterval = null;
+let speechTimer  = null;
 let beatStep     = 0;
 let nextNoteTime = 0;
 
@@ -842,11 +852,24 @@ const PAT_KICK  = [1,0,0,1, 0,0,1,0, 1,0,0,0, 0,1,0,0];
 const PAT_SNARE = [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0];
 const PAT_HIHAT = [1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,1,1];
 
-function mkNoise(dur) {
-  const len = Math.max(1, Math.ceil(audioCtx.sampleRate * dur));
-  const buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
-  const d   = buf.getChannelData(0);
-  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+// Noise buffers are pre-allocated once per AudioContext so that playSnare /
+// playHiHat never allocate memory on the audio hot-path.
+let _snareBuffer = null;
+let _hihatBuffer = null;
+
+function buildNoiseBuffers() {
+  function fill(seconds) {
+    const len = Math.ceil(audioCtx.sampleRate * seconds);
+    const buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+    const d   = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    return buf;
+  }
+  _snareBuffer = fill(0.18);
+  _hihatBuffer = fill(0.05);
+}
+
+function mkNoise(buf) {
   const src = audioCtx.createBufferSource();
   src.buffer = buf;
   return src;
@@ -865,7 +888,7 @@ function playKick(t) {
 }
 
 function playSnare(t) {
-  const src = mkNoise(0.18);
+  const src = mkNoise(_snareBuffer);
   const flt = audioCtx.createBiquadFilter();
   const g   = audioCtx.createGain();
   flt.type = 'bandpass'; flt.frequency.value = 2800; flt.Q.value = 0.8;
@@ -876,7 +899,7 @@ function playSnare(t) {
 }
 
 function playHiHat(t) {
-  const src = mkNoise(0.05);
+  const src = mkNoise(_hihatBuffer);
   const flt = audioCtx.createBiquadFilter();
   const g   = audioCtx.createGain();
   flt.type = 'highpass'; flt.frequency.value = 9000;
@@ -887,36 +910,64 @@ function playHiHat(t) {
 }
 
 function scheduleBeat() {
-  while (nextNoteTime < audioCtx.currentTime + 0.15) {
-    if (PAT_KICK[beatStep])  playKick(nextNoteTime);
-    if (PAT_SNARE[beatStep]) playSnare(nextNoteTime);
-    if (PAT_HIHAT[beatStep]) playHiHat(nextNoteTime);
-    beatStep      = (beatStep + 1) % 16;
-    nextNoteTime += STEP_DUR;
-  }
+  if (!audioCtx || audioCtx.state !== 'running') return;
+  try {
+    const now = audioCtx.currentTime;
+    // If tab was hidden or AI blocked the thread for too long, nextNoteTime may be
+    // far in the past.  Jumping it forward prevents a burst of back-to-back notes
+    // that would create dozens of AudioNodes in one synchronous call.
+    if (nextNoteTime < now - 0.3) nextNoteTime = now;
+    // Schedule at most one bar (16 steps) per call so the while-loop can never
+    // run away and starve the event loop.
+    let steps = 0;
+    while (nextNoteTime < now + 0.2 && steps < 16) {
+      if (PAT_KICK[beatStep])  playKick(nextNoteTime);
+      if (PAT_SNARE[beatStep]) playSnare(nextNoteTime);
+      if (PAT_HIHAT[beatStep]) playHiHat(nextNoteTime);
+      beatStep      = (beatStep + 1) % 16;
+      nextNoteTime += STEP_DUR;
+      steps++;
+    }
+  } catch (e) { /* audio error – never let it affect game state */ }
 }
 
 function sayFourWins() {
   if (!musicOn || !window.speechSynthesis) return;
-  const u = new SpeechSynthesisUtterance('four wins');
-  u.rate = 0.65; u.pitch = 0.6; u.volume = 0.9;
-  u.onend = () => { if (musicOn) setTimeout(sayFourWins, 3000); };
-  speechSynthesis.speak(u);
+  try {
+    // Always cancel any pending/speaking utterance before queuing a new one.
+    // Without this, the speech queue grows unboundedly and Chrome can stall.
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance('four wins');
+    u.rate = 0.65; u.pitch = 0.6; u.volume = 0.9;
+    // Do NOT chain via onend — calling speechSynthesis.speak() from a
+    // setTimeout (non-user-gesture) is silently blocked in Chrome and
+    // can corrupt speech-API state, which stalls the render thread.
+    // A fixed setInterval (started from the user-gesture click) is reliable.
+    speechSynthesis.speak(u);
+  } catch (e) { /* speech unavailable – ignore */ }
 }
 
 function startMusic() {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    buildNoiseBuffers();   // allocate once; reused for every note
+  }
   if (audioCtx.state === 'suspended') audioCtx.resume();
   beatStep     = 0;
   nextNoteTime = audioCtx.currentTime + 0.05;
-  beatInterval = setInterval(scheduleBeat, 25);
+  beatInterval = setInterval(scheduleBeat, 50);  // 50 ms is plenty for 200 ms lookahead
   sayFourWins();
+  // Repeat "four wins" on a fixed interval anchored to the original user click.
+  // This avoids the onend→setTimeout chain that Chrome blocks from non-gesture contexts.
+  speechTimer = setInterval(sayFourWins, 5000);
 }
 
 function stopMusic() {
   clearInterval(beatInterval);
+  clearInterval(speechTimer);
   beatInterval = null;
-  if (window.speechSynthesis) speechSynthesis.cancel();
+  speechTimer  = null;
+  if (window.speechSynthesis) { try { speechSynthesis.cancel(); } catch (e) {} }
 }
 
 // ─────────────────────────────────────────────
