@@ -333,14 +333,16 @@
   <button class="diff-btn active" data-level="easy">Easy</button>
   <button class="diff-btn"        data-level="medium">Medium</button>
   <button class="diff-btn"        data-level="hard">Hard</button>
+  <button class="diff-btn"        data-level="expert">Expert</button>
 </div>
 
-<div id="depthDisplay" class="depth-display">Lookahead: 1 move</div>
+<div id="depthDisplay" class="depth-display">Lookahead: 2 moves</div>
 
 <!-- Toggles -->
 <div class="explain-row">
   <button id="explainToggleBtn" class="explain-toggle-btn">ⓘ Explain Mode: <span id="explainToggleState">OFF</span></button>
   <button id="cpuFirstBtn" class="explain-toggle-btn">CPU Starts: <span id="cpuFirstState">OFF</span></button>
+  <button id="musicBtn" class="explain-toggle-btn">♪ Music: <span id="musicState">OFF</span></button>
 </div>
 
 <!-- Board -->
@@ -391,7 +393,7 @@ const HUMAN = 1;
 const CPU   = 2;
 const EMPTY = 0;
 
-const DEPTH = { easy: 1, medium: 3, hard: 7 };
+const DEPTH = { easy: 2, medium: 3, hard: 7, expert: 10 };
 
 // ─────────────────────────────────────────────
 //  State
@@ -427,6 +429,8 @@ const explainText          = document.getElementById('explainText');
 const explainLookaheadText = document.getElementById('explainLookaheadText');
 const cpuFirstBtn          = document.getElementById('cpuFirstBtn');
 const cpuFirstStateEl      = document.getElementById('cpuFirstState');
+const musicBtn             = document.getElementById('musicBtn');
+const musicStateEl         = document.getElementById('musicState');
 
 // ─────────────────────────────────────────────
 //  Board logic
@@ -822,6 +826,100 @@ function afterMove(player) {
 }
 
 // ─────────────────────────────────────────────
+//  Music — Web Audio API beat + Web Speech "four wins" loop
+// ─────────────────────────────────────────────
+let musicOn      = false;
+let audioCtx     = null;
+let beatInterval = null;
+let beatStep     = 0;
+let nextNoteTime = 0;
+
+const MUSIC_BPM = 88;
+const STEP_DUR  = 60 / MUSIC_BPM / 4;   // 16th-note duration in seconds
+
+// Hip-hop trap pattern — 16 16th-note steps
+const PAT_KICK  = [1,0,0,1, 0,0,1,0, 1,0,0,0, 0,1,0,0];
+const PAT_SNARE = [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0];
+const PAT_HIHAT = [1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,1,1];
+
+function mkNoise(dur) {
+  const len = Math.max(1, Math.ceil(audioCtx.sampleRate * dur));
+  const buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+  const d   = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+  return src;
+}
+
+function playKick(t) {
+  const osc = audioCtx.createOscillator();
+  const g   = audioCtx.createGain();
+  osc.connect(g); g.connect(audioCtx.destination);
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(160, t);
+  osc.frequency.exponentialRampToValueAtTime(30, t + 0.32);
+  g.gain.setValueAtTime(1.3, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
+  osc.start(t); osc.stop(t + 0.32);
+}
+
+function playSnare(t) {
+  const src = mkNoise(0.18);
+  const flt = audioCtx.createBiquadFilter();
+  const g   = audioCtx.createGain();
+  flt.type = 'bandpass'; flt.frequency.value = 2800; flt.Q.value = 0.8;
+  src.connect(flt); flt.connect(g); g.connect(audioCtx.destination);
+  g.gain.setValueAtTime(0.45, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+  src.start(t); src.stop(t + 0.18);
+}
+
+function playHiHat(t) {
+  const src = mkNoise(0.05);
+  const flt = audioCtx.createBiquadFilter();
+  const g   = audioCtx.createGain();
+  flt.type = 'highpass'; flt.frequency.value = 9000;
+  src.connect(flt); flt.connect(g); g.connect(audioCtx.destination);
+  g.gain.setValueAtTime(0.13, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
+  src.start(t); src.stop(t + 0.05);
+}
+
+function scheduleBeat() {
+  while (nextNoteTime < audioCtx.currentTime + 0.15) {
+    if (PAT_KICK[beatStep])  playKick(nextNoteTime);
+    if (PAT_SNARE[beatStep]) playSnare(nextNoteTime);
+    if (PAT_HIHAT[beatStep]) playHiHat(nextNoteTime);
+    beatStep      = (beatStep + 1) % 16;
+    nextNoteTime += STEP_DUR;
+  }
+}
+
+function sayFourWins() {
+  if (!musicOn || !window.speechSynthesis) return;
+  const u = new SpeechSynthesisUtterance('four wins');
+  u.rate = 0.65; u.pitch = 0.6; u.volume = 0.9;
+  u.onend = () => { if (musicOn) setTimeout(sayFourWins, 3000); };
+  speechSynthesis.speak(u);
+}
+
+function startMusic() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  beatStep     = 0;
+  nextNoteTime = audioCtx.currentTime + 0.05;
+  beatInterval = setInterval(scheduleBeat, 25);
+  sayFourWins();
+}
+
+function stopMusic() {
+  clearInterval(beatInterval);
+  beatInterval = null;
+  if (window.speechSynthesis) speechSynthesis.cancel();
+}
+
+// ─────────────────────────────────────────────
 //  Event listeners
 // ─────────────────────────────────────────────
 document.querySelectorAll('.diff-btn').forEach(btn => {
@@ -849,6 +947,13 @@ cpuFirstBtn.addEventListener('click', () => {
   cpuFirstBtn.classList.toggle('active', cpuFirst);
   cpuFirstStateEl.textContent = cpuFirst ? 'ON' : 'OFF';
   initBoard();
+});
+
+musicBtn.addEventListener('click', () => {
+  musicOn = !musicOn;
+  musicBtn.classList.toggle('active', musicOn);
+  musicStateEl.textContent = musicOn ? 'ON' : 'OFF';
+  if (musicOn) startMusic(); else stopMusic();
 });
 
 // ─────────────────────────────────────────────

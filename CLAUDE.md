@@ -54,7 +54,7 @@ The five sections in order are: **Constants → State → DOM references → Boa
   <p.subtitle>                — tagline
   <div.difficulty-row>        — Easy / Medium / Hard buttons (.diff-btn[data-level])
   <div#depthDisplay>          — "Lookahead: N move(s)" — updates when difficulty changes
-  <div.explain-row>           — Explain Mode toggle (#explainToggleBtn) + CPU Starts toggle (#cpuFirstBtn)
+  <div.explain-row>           — Explain Mode toggle (#explainToggleBtn) + CPU Starts toggle (#cpuFirstBtn) + Music toggle (#musicBtn)
   <div.board-wrapper>
     <div#colArrows>           — 7 ▼ arrow divs (.col-arrow[data-arrow=c])
     <div#boardGrid>           — 42 cell divs (.cell[data-r][data-c])
@@ -70,7 +70,7 @@ The five sections in order are: **Constants → State → DOM references → Boa
 ```js
 ROWS  = 6,  COLS = 7
 HUMAN = 1,  CPU  = 2,  EMPTY = 0
-DEPTH = { easy: 1, medium: 3, hard: 7 }
+DEPTH = { easy: 2, medium: 3, hard: 7, expert: 10 }
 ```
 
 ### State variables
@@ -80,13 +80,18 @@ DEPTH = { easy: 1, medium: 3, hard: 7 }
 | `board` | `number[][]` | 6×7 grid; values 0 / 1 / 2 |
 | `currentTurn` | `1\|2` | Whose turn it is |
 | `gameOver` | `boolean` | Blocks input after win/draw |
-| `difficulty` | `'easy'\|'medium'\|'hard'` | Controls AI strategy |
+| `difficulty` | `'easy'\|'medium'\|'hard'\|'expert'` | Controls AI strategy |
 | `hoveredCol` | `number` | Column index under the cursor (-1 = none); drives hover highlighting |
 | `animating` | `boolean` | Blocks clicks during drop animation or AI delay |
 | `score` | `{p1,p2,draw}` | Cumulative score across games (never resets on New Game) |
 | `explainMode` | `boolean` | Whether explanation mode is enabled |
 | `lastCpuExplanation` | `{reason, lookahead}\|null` | Plain-language explanation of the most recent CPU move |
 | `cpuFirst` | `boolean` | When true, CPU takes the first move of each new game |
+| `musicOn` | `boolean` | Whether the background beat is playing |
+| `audioCtx` | `AudioContext\|null` | Web Audio API context; created lazily on first music start |
+| `beatInterval` | `number\|null` | `setInterval` handle for the beat scheduler |
+| `beatStep` | `number` | Current 16th-note position in the 16-step pattern (0–15) |
+| `nextNoteTime` | `number` | AudioContext timestamp of the next note to schedule |
 
 ### Key Functions
 
@@ -132,9 +137,10 @@ DEPTH = { easy: 1, medium: 3, hard: 7 }
 
 | Level | `DEPTH` | Strategy |
 |---|---|---|
-| Easy | 1 | `getBestMove` → minimax depth 1 |
+| Easy | 2 | `getBestMove` → minimax depth 2 |
 | Medium | 3 | `getBestMove` → minimax depth 3 |
 | Hard | 7 | `getBestMove` → minimax depth 7 with alpha-beta |
+| Expert | 10 | `getBestMove` → minimax depth 10 with alpha-beta |
 
 Column iteration order in `getBestMove` is center-out (`sort by |col - 3|`) to maximise alpha-beta cut-offs.
 
@@ -168,7 +174,30 @@ After each CPU move, when `explainMode === true` and `lastCpuExplanation !== nul
 | `playMove(col, player)` | `→ void` | Calls `dropPiece`, adds CSS drop animation, calls `afterMove` on `animationend` |
 | `afterMove(player)` | `→ void` | Checks win/draw → updates score/status; otherwise switches turn and schedules CPU move via `setTimeout` |
 
-**CPU think delay:** 200 ms (easy) / 300 ms (medium) / 400 ms (hard) — ensures the board re-paints before blocking JS computation.
+**CPU think delay:** 200 ms (easy) / 300 ms (medium) / 400 ms (hard/expert) — ensures the board re-paints before blocking JS computation.
+
+#### Music
+
+| Function | Signature | Description |
+|---|---|---|
+| `startMusic()` | `→ void` | Creates `AudioContext` (lazily), resets beat position, starts the `scheduleBeat` interval, begins the "four wins" speech loop |
+| `stopMusic()` | `→ void` | Clears `beatInterval`; cancels any pending speech synthesis |
+| `scheduleBeat()` | `→ void` | Called every 25 ms; schedules kick/snare/hi-hat notes up to 150 ms ahead using `PAT_KICK`, `PAT_SNARE`, `PAT_HIHAT` (16-step arrays) |
+| `sayFourWins()` | `→ void` | Speaks "four wins" via Web Speech API at slow rate/low pitch; chains to itself (3 s gap) via `onend` while `musicOn` is true |
+| `mkNoise(dur)` | `→ AudioBufferSourceNode` | Returns a white-noise buffer of the given duration |
+| `playKick(t)` | `→ void` | Sine oscillator pitched 160 Hz→30 Hz over 320 ms; scheduled at Web Audio time `t` |
+| `playSnare(t)` | `→ void` | Band-pass filtered white noise (2800 Hz) over 180 ms |
+| `playHiHat(t)` | `→ void` | High-pass filtered white noise (9 kHz) over 50 ms |
+
+**Beat pattern** (`MUSIC_BPM = 88`, 16 16th-note steps per bar):
+
+| Track | Pattern |
+|---|---|
+| Kick | `1001 0010 1000 0100` |
+| Snare | `0000 1000 0000 1000` |
+| Hi-hat | `1010 1010 1010 1011` |
+
+**Note:** actual AI-generated rap vocals are not available in-browser. `sayFourWins` uses the browser's built-in Web Speech API (voice quality varies by OS/browser).
 
 ---
 
