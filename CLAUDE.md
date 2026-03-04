@@ -27,7 +27,7 @@ Open `index.html` directly in any modern browser to play.
 ## Game Rules
 
 - Board: **7 columns × 6 rows** (standard Connect Four dimensions)
-- Players alternate turns; Human always goes first
+- Players alternate turns; Human goes first by default (CPU-first toggle available)
 - A piece falls to the **lowest empty row** of the chosen column
 - Win condition: **4 consecutive pieces** in any direction (horizontal / vertical / diagonal)
 - Draw: board is full with no winner
@@ -53,15 +53,16 @@ The five sections in order are: **Constants → State → DOM references → Boa
   <h1>                        — gradient title
   <p.subtitle>                — tagline
   <div.difficulty-row>        — Easy / Medium / Hard buttons (.diff-btn[data-level])
-  <div.explain-row>           — Explain Mode toggle (#explainToggleBtn)
+  <div#depthDisplay>          — "Lookahead: N move(s)" — updates when difficulty changes
+  <div.explain-row>           — Explain Mode toggle (#explainToggleBtn) + CPU Starts toggle (#cpuFirstBtn)
   <div.board-wrapper>
     <div#colArrows>           — 7 ▼ arrow divs (.col-arrow[data-arrow=c])
     <div#boardGrid>           — 42 cell divs (.cell[data-r][data-c])
-  <div#statusBar>             — coloured dot + <span#statusText> + #explainInfoBtn (ⓘ)
+  <div#statusBar>             — coloured dot + <span#statusText>
+  <div#explainInline>         — inline explanation shown after each CPU move when Explain Mode is ON
   <div.score-row>             — <span#scoreP1> <span#scoreDraw> <span#scoreP2>
   <button#newGameBtn>
   <div.legend>
-  <div#explainPopup>          — fixed overlay; contains .explain-popup-card with reason + lookahead
 ```
 
 ### Constants
@@ -69,8 +70,7 @@ The five sections in order are: **Constants → State → DOM references → Boa
 ```js
 ROWS  = 6,  COLS = 7
 HUMAN = 1,  CPU  = 2,  EMPTY = 0
-DEPTH = { easy: 0, medium: 3, hard: 7 }
-// Note: DEPTH.easy is never used — Easy mode bypasses minimax entirely
+DEPTH = { easy: 1, medium: 3, hard: 7 }
 ```
 
 ### State variables
@@ -86,6 +86,7 @@ DEPTH = { easy: 0, medium: 3, hard: 7 }
 | `score` | `{p1,p2,draw}` | Cumulative score across games (never resets on New Game) |
 | `explainMode` | `boolean` | Whether explanation mode is enabled |
 | `lastCpuExplanation` | `{reason, lookahead}\|null` | Plain-language explanation of the most recent CPU move |
+| `cpuFirst` | `boolean` | When true, CPU takes the first move of each new game |
 
 ### Key Functions
 
@@ -125,13 +126,13 @@ DEPTH = { easy: 0, medium: 3, hard: 7 }
 |---|---|---|
 | `minimax(b, depth, alpha, beta, maximizing)` | `→ number` | Recursive minimax with alpha-beta pruning; returns heuristic score |
 | `getBestMove(b, depth)` | `→ number` | Tries each valid column (ordered center-out), runs minimax at `depth-1`, returns best column |
-| `chooseComputerCol()` | `→ number` | Easy → random valid column; Medium/Hard → `getBestMove` at the configured depth |
+| `chooseComputerCol()` | `→ number` | Calls `getBestMove` at `DEPTH[difficulty]` for all difficulty levels |
 
 **AI difficulty:**
 
 | Level | `DEPTH` | Strategy |
 |---|---|---|
-| Easy | — | `Math.random()` pick from `getValidCols` |
+| Easy | 1 | `getBestMove` → minimax depth 1 |
 | Medium | 3 | `getBestMove` → minimax depth 3 |
 | Hard | 7 | `getBestMove` → minimax depth 7 with alpha-beta |
 
@@ -149,20 +150,20 @@ Column iteration order in `getBestMove` is center-out (`sort by |col - 3|`) to m
 
 | Function | Signature | Description |
 |---|---|---|
-| `generateExplanation(col)` | `→ {reason, lookahead}` | Called inside `chooseComputerCol()` **before** the piece is placed. Checks for immediate win, blocking move, or strategic play; returns plain-language strings for the popup |
+| `generateExplanation(col)` | `→ {reason, lookahead}` | Called inside `chooseComputerCol()` **before** the piece is placed. Checks for immediate win, blocking move, or strategic play; returns plain-language strings |
 
 `generateExplanation` priority order:
 1. **Immediate win** — placing CPU in `col` → `checkWinner` returns CPU
 2. **Block** — placing HUMAN in `col` → `checkWinner` returns HUMAN
 3. **Strategic fallback** — best position after lookahead
 
-After each CPU move, when `explainMode === true` and `lastCpuExplanation !== null`, the popup (`#explainPopup`) opens **automatically** with the explanation pre-filled. The `#explainInfoBtn` (ⓘ) is also revealed so the user can re-open the popup if they closed it. The popup is dismissed by the close button or clicking the overlay backdrop.
+After each CPU move, when `explainMode === true` and `lastCpuExplanation !== null`, `#explainInline` is shown inline below the status bar with the explanation pre-filled. It hides again when the CPU begins thinking for its next move.
 
 #### Game flow
 
 | Function | Signature | Description |
 |---|---|---|
-| `initBoard()` | `→ void` | Resets `board`, `currentTurn`, `gameOver`, `animating`, `hoveredCol`, `lastCpuExplanation`; builds DOM on first call only |
+| `initBoard()` | `→ void` | Resets `board`, `currentTurn`, `gameOver`, `animating`, `hoveredCol`, `lastCpuExplanation`; builds DOM on first call only; if `cpuFirst` is true, schedules the CPU's opening move |
 | `handleClick(col)` | `→ void` | Guards (`gameOver`, `animating`, `currentTurn`, full column) then calls `playMove` |
 | `playMove(col, player)` | `→ void` | Calls `dropPiece`, adds CSS drop animation, calls `afterMove` on `animationend` |
 | `afterMove(player)` | `→ void` | Checks win/draw → updates score/status; otherwise switches turn and schedules CPU move via `setTimeout` |
@@ -199,7 +200,7 @@ After each CPU move, when `explainMode === true` and `lastCpuExplanation !== nul
 | `.dropping` | `.cell` | Cell currently animating |
 | `.hovered` | `.col-arrow` | Arrow above the hovered column |
 | `.active` | `.diff-btn` | Currently selected difficulty button |
-| `.active` | `.explain-toggle-btn` | Explain mode is enabled |
+| `.active` | `.explain-toggle-btn` | Toggle is enabled (Explain Mode or CPU Starts) |
 
 ---
 
