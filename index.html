@@ -839,143 +839,18 @@ function afterMove(player) {
 }
 
 // ─────────────────────────────────────────────
-//  Music — Web Audio API beat + Web Speech "four wins" loop
+//  Music
 // ─────────────────────────────────────────────
-let musicOn      = false;
-let audioCtx     = null;
-let beatInterval = null;
-let speechTimer  = null;
-let beatStep     = 0;
-let nextNoteTime = 0;
-
-const MUSIC_BPM = 88;
-const STEP_DUR  = 60 / MUSIC_BPM / 4;   // 16th-note duration in seconds
-
-// Hip-hop trap pattern — 16 16th-note steps
-const PAT_KICK  = [1,0,0,1, 0,0,1,0, 1,0,0,0, 0,1,0,0];
-const PAT_SNARE = [0,0,0,0, 1,0,0,0, 0,0,0,0, 1,0,0,0];
-const PAT_HIHAT = [1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,1,1];
-
-// Noise buffers are pre-allocated once per AudioContext so that playSnare /
-// playHiHat never allocate memory on the audio hot-path.
-let _snareBuffer = null;
-let _hihatBuffer = null;
-
-function buildNoiseBuffers() {
-  function fill(seconds) {
-    const len = Math.ceil(audioCtx.sampleRate * seconds);
-    const buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
-    const d   = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-    return buf;
-  }
-  _snareBuffer = fill(0.18);
-  _hihatBuffer = fill(0.05);
-}
-
-function mkNoise(buf) {
-  const src = audioCtx.createBufferSource();
-  src.buffer = buf;
-  return src;
-}
-
-function playKick(t) {
-  const osc = audioCtx.createOscillator();
-  const g   = audioCtx.createGain();
-  osc.connect(g); g.connect(audioCtx.destination);
-  osc.type = 'sine';
-  osc.frequency.setValueAtTime(160, t);
-  osc.frequency.exponentialRampToValueAtTime(30, t + 0.32);
-  g.gain.setValueAtTime(1.3, t);
-  g.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
-  osc.start(t); osc.stop(t + 0.32);
-}
-
-function playSnare(t) {
-  const src = mkNoise(_snareBuffer);
-  const flt = audioCtx.createBiquadFilter();
-  const g   = audioCtx.createGain();
-  flt.type = 'bandpass'; flt.frequency.value = 2800; flt.Q.value = 0.8;
-  src.connect(flt); flt.connect(g); g.connect(audioCtx.destination);
-  g.gain.setValueAtTime(0.45, t);
-  g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
-  src.start(t); src.stop(t + 0.18);
-}
-
-function playHiHat(t) {
-  const src = mkNoise(_hihatBuffer);
-  const flt = audioCtx.createBiquadFilter();
-  const g   = audioCtx.createGain();
-  flt.type = 'highpass'; flt.frequency.value = 9000;
-  src.connect(flt); flt.connect(g); g.connect(audioCtx.destination);
-  g.gain.setValueAtTime(0.13, t);
-  g.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
-  src.start(t); src.stop(t + 0.05);
-}
-
-function scheduleBeat() {
-  if (!audioCtx || audioCtx.state !== 'running') return;
-  try {
-    const now = audioCtx.currentTime;
-    // If tab was hidden or AI blocked the thread for too long, nextNoteTime may be
-    // far in the past.  Jumping it forward prevents a burst of back-to-back notes
-    // that would create dozens of AudioNodes in one synchronous call.
-    if (nextNoteTime < now - 0.3) nextNoteTime = now;
-    // Schedule at most one bar (16 steps) per call so the while-loop can never
-    // run away and starve the event loop.
-    let steps = 0;
-    while (nextNoteTime < now + 0.2 && steps < 16) {
-      if (PAT_KICK[beatStep])  playKick(nextNoteTime);
-      if (PAT_SNARE[beatStep]) playSnare(nextNoteTime);
-      if (PAT_HIHAT[beatStep]) playHiHat(nextNoteTime);
-      beatStep      = (beatStep + 1) % 16;
-      nextNoteTime += STEP_DUR;
-      steps++;
-    }
-  } catch (e) { /* audio error – never let it affect game state */ }
-}
-
-function sayFourWins() {
-  if (!musicOn || !window.speechSynthesis) return;
-  try {
-    // Always cancel any pending/speaking utterance before queuing a new one.
-    // Without this, the speech queue grows unboundedly and Chrome can stall.
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance('four wins');
-    u.rate = 0.65; u.pitch = 0.6; u.volume = 0.9;
-    // Do NOT chain via onend — calling speechSynthesis.speak() from a
-    // setTimeout (non-user-gesture) is silently blocked in Chrome and
-    // can corrupt speech-API state, which stalls the render thread.
-    // A fixed setInterval (started from the user-gesture click) is reliable.
-    speechSynthesis.speak(u);
-  } catch (e) { /* speech unavailable – ignore */ }
-}
+let musicOn = false;
 
 function startMusic() {
-  if (!audioCtx) {
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    buildNoiseBuffers();   // allocate once; reused for every note
-  }
-  if (audioCtx.state === 'suspended') audioCtx.resume();
-  beatStep     = 0;
-  nextNoteTime = audioCtx.currentTime + 0.05;
-  beatInterval = setInterval(scheduleBeat, 50);  // 50 ms is plenty for 200 ms lookahead
-  sayFourWins();
-  // Repeat "four wins" on a fixed interval anchored to the original user click.
-  // This avoids the onend→setTimeout chain that Chrome blocks from non-gesture contexts.
-  speechTimer = setInterval(sayFourWins, 5000);
-  // MP3 background loop — sits under the drum machine
-  bgAudio.volume = 0.45;
+  bgAudio.loop = true;
+  bgAudio.volume = 0.7;
   bgAudio.currentTime = 0;
-  bgAudio.play().catch(() => { /* autoplay blocked – user can still hear drums */ });
+  bgAudio.play().catch(() => {});
 }
 
 function stopMusic() {
-  clearInterval(beatInterval);
-  clearInterval(speechTimer);
-  beatInterval = null;
-  speechTimer  = null;
-  if (window.speechSynthesis) { try { speechSynthesis.cancel(); } catch (e) {} }
   bgAudio.pause();
   bgAudio.currentTime = 0;
 }
