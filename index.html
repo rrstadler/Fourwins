@@ -345,6 +345,9 @@
   <button id="musicBtn" class="explain-toggle-btn">♪ Music: <span id="musicState">OFF</span></button>
 </div>
 
+<!-- Background music loop (controlled by JS) -->
+<audio id="bgAudio" src="fourwins.mp3" loop preload="auto" style="display:none"></audio>
+
 <!-- Board -->
 <div class="board-wrapper">
   <div class="col-arrows" id="colArrows"></div>
@@ -431,6 +434,7 @@ const cpuFirstBtn          = document.getElementById('cpuFirstBtn');
 const cpuFirstStateEl      = document.getElementById('cpuFirstState');
 const musicBtn             = document.getElementById('musicBtn');
 const musicStateEl         = document.getElementById('musicState');
+const bgAudio              = document.getElementById('bgAudio');
 
 // ─────────────────────────────────────────────
 //  Board logic
@@ -960,6 +964,10 @@ function startMusic() {
   // Repeat "four wins" on a fixed interval anchored to the original user click.
   // This avoids the onend→setTimeout chain that Chrome blocks from non-gesture contexts.
   speechTimer = setInterval(sayFourWins, 5000);
+  // MP3 background loop — sits under the drum machine
+  bgAudio.volume = 0.45;
+  bgAudio.currentTime = 0;
+  bgAudio.play().catch(() => { /* autoplay blocked – user can still hear drums */ });
 }
 
 function stopMusic() {
@@ -968,6 +976,8 @@ function stopMusic() {
   beatInterval = null;
   speechTimer  = null;
   if (window.speechSynthesis) { try { speechSynthesis.cancel(); } catch (e) {} }
+  bgAudio.pause();
+  bgAudio.currentTime = 0;
 }
 
 // ─────────────────────────────────────────────
