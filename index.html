@@ -871,6 +871,13 @@ document.querySelectorAll('.diff-btn').forEach(btn => {
 
 newGameBtn.addEventListener('click', initBoard);
 
+// Cheat code: double-tap/double-click during human's turn → Skynet picks best move at depth 8
+boardGrid.addEventListener('dblclick', () => {
+  if (gameOver || animating || currentTurn !== HUMAN) return;
+  const col = getBestMove(board, 8);
+  if (col !== -1) playMove(col, HUMAN);
+});
+
 explainToggleBtn.addEventListener('click', () => {
   explainMode = !explainMode;
   explainToggleBtn.classList.toggle('active', explainMode);
