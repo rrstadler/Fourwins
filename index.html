@@ -871,12 +871,19 @@ document.querySelectorAll('.diff-btn').forEach(btn => {
 
 newGameBtn.addEventListener('click', initBoard);
 
-// Cheat code: double-tap/double-click during human's turn → Skynet picks best move at depth 8
-boardGrid.addEventListener('dblclick', () => {
+// Cheat code: long-press (600 ms) on the board during human's turn → Skynet picks best move at depth 8
+let cheatTimer = null;
+boardGrid.addEventListener('pointerdown', () => {
   if (gameOver || animating || currentTurn !== HUMAN) return;
-  const col = getBestMove(board, 8);
-  if (col !== -1) playMove(col, HUMAN);
+  cheatTimer = setTimeout(() => {
+    cheatTimer = null;
+    if (gameOver || animating || currentTurn !== HUMAN) return;
+    const col = getBestMove(board, 8);
+    if (col !== -1) playMove(col, HUMAN);
+  }, 600);
 });
+boardGrid.addEventListener('pointerup',     () => { clearTimeout(cheatTimer); cheatTimer = null; });
+boardGrid.addEventListener('pointercancel', () => { clearTimeout(cheatTimer); cheatTimer = null; });
 
 explainToggleBtn.addEventListener('click', () => {
   explainMode = !explainMode;
