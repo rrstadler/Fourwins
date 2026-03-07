@@ -370,7 +370,7 @@
 <div class="score-row">
   <div class="score-item p1">You<span id="scoreP1">0</span></div>
   <div class="score-item dr">Draws<span id="scoreDraw">0</span></div>
-  <div class="score-item p2">CPU<span id="scoreP2">0</span></div>
+  <div class="score-item p2">Skynet<span id="scoreP2">0</span></div>
 </div>
 
 <!-- New Game -->
@@ -382,7 +382,7 @@
     <div class="legend-dot" style="background:#e94560;"></div> You (Red)
   </div>
   <div class="legend-item">
-    <div class="legend-dot" style="background:#f5a623;"></div> CPU (Yellow)
+    <div class="legend-dot" style="background:#f5a623;"></div> Skynet (Yellow)
   </div>
 </div>
 
@@ -396,7 +396,7 @@ const HUMAN = 1;
 const CPU   = 2;
 const EMPTY = 0;
 
-const DEPTH = { easy: 2, medium: 3, hard: 7, expert: 8 };
+const DEPTH = { easy: 1, medium: 2, hard: 6, expert: 7 };
 
 // ─────────────────────────────────────────────
 //  State
@@ -735,7 +735,7 @@ function initBoard() {
 
   if (cpuFirst) {
     currentTurn = CPU;
-    setStatus('CPU is thinking…', 'dot-player2');
+    setStatus('Skynet is thinking…', 'dot-player2');
     setTimeout(() => {
       const col = chooseComputerCol();
       if (col !== -1) playMove(col, CPU);
@@ -796,7 +796,7 @@ function afterMove(player) {
       } else {
         explainInline.hidden = true;
       }
-      setStatus('CPU wins!', 'dot-player2');
+      setStatus('Skynet wins!', 'dot-player2');
     }
     updateScoreDisplay();
     return;
@@ -818,7 +818,7 @@ function afterMove(player) {
 
   if (currentTurn === CPU) {
     explainInline.hidden = true;   // hide stale explanation while CPU thinks
-    setStatus('CPU is thinking…', 'dot-player2');
+    setStatus('Skynet is thinking…', 'dot-player2');
     // Defer AI so the board renders first
     setTimeout(() => {
       const col = chooseComputerCol();
